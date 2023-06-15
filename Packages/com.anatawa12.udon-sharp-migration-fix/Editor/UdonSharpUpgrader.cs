@@ -17,23 +17,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         [MenuItem("VRChat SDK/Udon Sharp/Force Upgrade")]
         internal static void ForceUpgrade()
         {
-            UdonSharpProgramAsset.GetAllUdonSharpPrograms().ForEach(QueueUpgrade);
             UdonSharpEditorCache.Instance.QueueUpgradePass();
-        }
-
-        private static bool _needsProgramUpgradePass;
-        
-        public static void QueueUpgrade(UdonSharpProgramAsset programAsset)
-        {
-            if (EditorApplication.isPlayingOrWillChangePlaymode)
-                return;
-            
-            if (programAsset == null ||
-                programAsset.sourceCsScript == null)
-                return;
-
-            if (programAsset.ScriptVersion >= UdonSharpProgramVersion.CurrentVersion)
-                return;
         }
 
         internal static bool NeedsUpgradeScripts()

@@ -8,10 +8,6 @@ using UnityEditor;
 using UnityEngine;
 using VRC.Udon;
 
-#if ODIN_INSPECTOR_3
-using Sirenix.OdinInspector.Editor;
-#endif
-
 namespace Anatawa12.UdonSharpMigrationFix
 {
     [InitializeOnLoad]

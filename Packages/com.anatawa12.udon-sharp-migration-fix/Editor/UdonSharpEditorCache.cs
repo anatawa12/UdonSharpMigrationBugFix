@@ -66,11 +66,6 @@ namespace Anatawa12.UdonSharpMigrationFix
 
         // Saves cache on play mode exit/enter and once we've entered the target mode reload the state from disk to persist the changes across play/edit mode
 
-        internal static void ResetInstance()
-        {
-            _instance = null;
-        }
-
         private class UdonSharpEditorCacheWriter : UnityEditor.AssetModificationProcessor
         {
             public static string[] OnWillSaveAssets(string[] paths)

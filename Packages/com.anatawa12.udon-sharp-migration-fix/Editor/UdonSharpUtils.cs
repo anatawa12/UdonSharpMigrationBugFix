@@ -19,47 +19,14 @@ namespace Anatawa12.UdonSharpMigrationFix
             Debug.Log($"[<color=#0c824c>UdonSharp Migration Bug Fix</color>] {message}");
         }
         
-        public static void Log(object message, UnityEngine.Object context)
-        {
-            Debug.Log($"[<color=#0c824c>UdonSharp Migration Bug Fix</color>] {message}", context);
-        }
-        
         public static void LogWarning(object message)
         {
             Debug.LogWarning($"[<color=#FF00FF>UdonSharp Migration Bug Fix</color>] {message}");
         }
         
-        public static void LogWarning(object message, UnityEngine.Object context)
-        {
-            Debug.LogWarning($"[<color=#FF00FF>UdonSharp Migration Bug Fix</color>] {message}", context);
-        }
-        
         public static void LogError(object message)
         {
             Debug.LogError($"[<color=#FF00FF>UdonSharp Migration Bug Fix</color>] {message}");
-        }
-        
-        public static void LogError(object message, UnityEngine.Object context)
-        {
-            Debug.LogError($"[<color=#FF00FF>UdonSharp Migration Bug Fix</color>] {message}", context);
-        }
-
-        internal static string[] GetProjectDefines(bool editorBuild)
-        {
-            List<string> defines = new List<string>();
-
-            foreach (string define in UnityEditor.EditorUserBuildSettings.activeScriptCompilationDefines)
-            {
-                if (!editorBuild)
-                    if (define.StartsWith("UNITY_EDITOR"))
-                        continue;
-
-                defines.Add(define);
-            }
-
-            defines.Add("COMPILER_UDONSHARP");
-
-            return defines.ToArray();
         }
 
         public static bool DoesUnityProjectHaveCompileErrors()

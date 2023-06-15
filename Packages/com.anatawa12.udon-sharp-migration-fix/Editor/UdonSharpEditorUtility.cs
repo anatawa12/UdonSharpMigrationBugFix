@@ -34,7 +34,7 @@ namespace Anatawa12.UdonSharpMigrationFix
     /// <summary>
     /// Various utility functions for interacting with U# behaviours and proxies for editor scripting.
     /// </summary>
-    public static class UdonSharpEditorUtility1
+    internal static class UdonSharpEditorUtility1
     {
         /// <summary>
         /// Deletes an UdonSharp program asset and the serialized program asset associated with it
@@ -66,26 +66,6 @@ namespace Anatawa12.UdonSharpMigrationFix
                 AssetDatabase.DeleteAsset(programAssetPath);
         }
 
-        /// <summary>
-        /// Converts a set of UdonSharpBehaviour components to their equivalent UdonBehaviour components
-        /// </summary>
-        [Obsolete("ConvertToUdonBehaviours is no longer supported, if you want to add a new U# component use UdonSharpEditorUtility.AddComponent", true)]
-        public static UdonBehaviour[] ConvertToUdonBehaviours(UdonSharpBehaviour[] components, bool convertChildren = false)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        /// Converts a set of UdonSharpBehaviour components to their equivalent UdonBehaviour components
-        /// Registers an Undo operation for the conversion
-        /// </summary>
-        /// <returns></returns>
-        [Obsolete("ConvertToUdonBehavioursWithUndo is no longer supported, if you want to add a new U# component use UdonSharpUndo.AddComponent", true)]
-        public static UdonBehaviour[] ConvertToUdonBehavioursWithUndo(UdonSharpBehaviour[] components, bool convertChildren = false)
-        {
-            throw new NotImplementedException();
-        }
-
         private static Dictionary<MonoScript, UdonSharpProgramAsset> _programAssetLookup;
         private static Dictionary<Type, UdonSharpProgramAsset> _programAssetTypeLookup;
         
@@ -108,12 +88,6 @@ namespace Anatawa12.UdonSharpMigrationFix
                         _programAssetTypeLookup.Add(programAsset.GetClass(), programAsset);
                 }
             }
-        }
-
-        internal static void ResetCaches()
-        {
-            _programAssetLookup = null;
-            _programAssetTypeLookup = null;
         }
 
         private static UdonSharpProgramAsset GetUdonSharpProgramAsset(MonoScript programScript)
@@ -146,15 +120,6 @@ namespace Anatawa12.UdonSharpMigrationFix
             return foundProgramAsset;
         }
 
-        [PublicAPI]
-        public static UdonSharpProgramAsset GetUdonSharpProgramAsset(UdonBehaviour udonBehaviour)
-        {
-            if (!IsUdonSharpBehaviour(udonBehaviour))
-                return null;
-
-            return (UdonSharpProgramAsset)udonBehaviour.programSource;
-        }
-
         internal const string BackingFieldName = "_udonSharpBackingUdonBehaviour";
 
         private static readonly FieldInfo _backingBehaviourField = typeof(UdonSharpBehaviour).GetField(BackingFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
@@ -164,7 +129,6 @@ namespace Anatawa12.UdonSharpMigrationFix
         /// </summary>
         /// <param name="behaviour"></param>
         /// <returns></returns>
-        [PublicAPI]
         public static UdonBehaviour GetBackingUdonBehaviour(UdonSharpBehaviour behaviour)
         {
             return (UdonBehaviour)_backingBehaviourField.GetValue(behaviour);
@@ -177,14 +141,6 @@ namespace Anatawa12.UdonSharpMigrationFix
 
         private const string UDONSHARP_BEHAVIOUR_VERSION_KEY = "___UdonSharpBehaviourVersion___";
         private const string UDONSHARP_BEHAVIOUR_UPGRADE_MARKER = "___UdonSharpBehaviourPersistDataFromUpgrade___";
-        private const string UDONSHARP_SCENE_BEHAVIOUR_UPGRADE_MARKER = "___UdonSharpBehaviourHasDoneSceneUpgrade___";
-
-        private static bool ShouldPersistVariable(string variableSymbol)
-        {
-            return variableSymbol == UDONSHARP_BEHAVIOUR_VERSION_KEY ||
-                   variableSymbol == UDONSHARP_BEHAVIOUR_UPGRADE_MARKER ||
-                   variableSymbol == UDONSHARP_SCENE_BEHAVIOUR_UPGRADE_MARKER;
-        }
 
         internal static UdonSharpBehaviourVersion GetBehaviourVersion(UdonBehaviour behaviour)
         {
@@ -219,25 +175,6 @@ namespace Anatawa12.UdonSharpMigrationFix
             UdonSharpUtils.LogError("Could not set version variable");
         }
 
-        private static bool BehaviourRequiresBackwardsCompatibilityPersistence(UdonBehaviour behaviour)
-        {
-            if (behaviour.publicVariables.TryGetVariableValue<bool>(UDONSHARP_BEHAVIOUR_UPGRADE_MARKER, out bool needsBackwardsCompat) && PrefabUtility.IsPartOfPrefabAsset(behaviour))
-                return needsBackwardsCompat;
-
-            return false;
-        }
-
-        internal static void ClearBehaviourVariables(UdonBehaviour behaviour, bool clearPersistentVariables = false)
-        {
-            foreach (string publicVarSymbol in behaviour.publicVariables.VariableSymbols.ToArray()) // ToArray so we don't modify the collection while iterating it
-            {
-                if (!clearPersistentVariables && ShouldPersistVariable(publicVarSymbol))
-                    continue;
-                
-                behaviour.publicVariables.RemoveVariable(publicVarSymbol);
-            }
-        }
-
         private static void SetBehaviourUpgraded(UdonBehaviour behaviour)
         {
             if (!PrefabUtility.IsPartOfPrefabAsset(behaviour))
@@ -248,22 +185,6 @@ namespace Anatawa12.UdonSharpMigrationFix
                 behaviour.publicVariables.RemoveVariable(UDONSHARP_BEHAVIOUR_UPGRADE_MARKER);
                 
                 IUdonVariable newVar = new UdonVariable<bool>(UDONSHARP_BEHAVIOUR_UPGRADE_MARKER, true);
-                behaviour.publicVariables.TryAddVariable(newVar);
-            }
-            
-            UdonSharpUtils.SetDirty(behaviour);
-        }
-
-        internal static void SetSceneBehaviourUpgraded(UdonBehaviour behaviour)
-        {
-            if (!PrefabUtility.IsPartOfPrefabInstance(behaviour) && !PrefabUtility.IsPartOfPrefabAsset(behaviour))
-                return;
-            
-            if (!behaviour.publicVariables.TrySetVariableValue<bool>(UDONSHARP_SCENE_BEHAVIOUR_UPGRADE_MARKER, true))
-            {
-                behaviour.publicVariables.RemoveVariable(UDONSHARP_SCENE_BEHAVIOUR_UPGRADE_MARKER);
-                
-                IUdonVariable newVar = new UdonVariable<bool>(UDONSHARP_SCENE_BEHAVIOUR_UPGRADE_MARKER, true);
                 behaviour.publicVariables.TryAddVariable(newVar);
             }
             
@@ -645,155 +566,11 @@ namespace Anatawa12.UdonSharpMigrationFix
             UdonSharpUtils.Log("Prefab upgrade pass finished");
         }
 
-        internal static bool BehaviourNeedsSetup(UdonSharpBehaviour behaviour)
-        {
-            return GetBackingUdonBehaviour(behaviour) == null ||
-                   behaviour.enabled != GetBackingUdonBehaviour(behaviour).enabled;
-        }
-        
         private static readonly MethodInfo _moveComponentRelativeToComponent = typeof(UnityEditorInternal.ComponentUtility).GetMethods(BindingFlags.NonPublic | BindingFlags.Static).First(e => e.Name == "MoveComponentRelativeToComponent" && e.GetParameters().Length == 3);
 
         internal static void MoveComponentRelativeToComponent(Component component, Component targetComponent, bool aboveTarget)
         {
             _moveComponentRelativeToComponent.Invoke(null, new object[] { component, targetComponent, aboveTarget });
-        }
-        
-        private static readonly FieldInfo _serializedProgramAssetField = typeof(UdonBehaviour).GetField("serializedProgramAsset", BindingFlags.NonPublic | BindingFlags.Instance);
-        
-        private static void RunBehaviourSetup(UdonSharpBehaviour behaviour, bool withUndo)
-        {
-            UdonBehaviour backingBehaviour = GetBackingUdonBehaviour(behaviour);
-
-            // Handle components pasted across different behaviours
-            if (backingBehaviour && backingBehaviour.gameObject != behaviour.gameObject)
-                backingBehaviour = null;
-
-            // Handle pasting components on the same behaviour, assumes pasted components are always the last in the list.
-            if (backingBehaviour)
-            {
-                int refCount = 0;
-                UdonSharpBehaviour[] behaviours = backingBehaviour.GetComponents<UdonSharpBehaviour>();
-                foreach (UdonSharpBehaviour udonSharpBehaviour in behaviours)
-                {
-                    if (GetBackingUdonBehaviour(udonSharpBehaviour) == backingBehaviour)
-                        refCount++;
-                }
-
-                if (refCount > 1 && behaviour == behaviours.Last())
-                {
-                    backingBehaviour = null;
-                }
-            }
-
-            bool isPartOfPrefabInstance = PrefabUtility.IsPartOfPrefabInstance(behaviour) && 
-                                          PrefabUtility.GetCorrespondingObjectFromSource(behaviour) != behaviour;
-
-            if (backingBehaviour == null)
-            {
-                if (isPartOfPrefabInstance)
-                {
-                    UdonSharpUtils.LogWarning("Cannot setup behaviour on prefab instance, original prefab asset needs setup");
-                    return;
-                }
-                
-                SetIgnoreEvents(true);
-                
-                try
-                {
-                    backingBehaviour = withUndo ? Undo.AddComponent<UdonBehaviour>(behaviour.gameObject) : behaviour.gameObject.AddComponent<UdonBehaviour>();
-                    
-                #pragma warning disable CS0618 // Type or member is obsolete
-                    backingBehaviour.SynchronizePosition = false;
-                    backingBehaviour.AllowCollisionOwnershipTransfer = false;
-                #pragma warning restore CS0618 // Type or member is obsolete
-
-                    MoveComponentRelativeToComponent(backingBehaviour, behaviour, false);
-                    
-                    SetBackingUdonBehaviour(behaviour, backingBehaviour);
-                    
-                    SetBehaviourVersion(backingBehaviour, UdonSharpBehaviourVersion.CurrentVersion);
-                    SetSceneBehaviourUpgraded(backingBehaviour);
-                    
-                    // UdonSharpUtils.Log($"Created behaviour {backingBehaviour}", behaviour);
-                }
-                finally
-                {
-                    SetIgnoreEvents(false);
-                }
-                
-                _proxyBehaviourLookup.Add(backingBehaviour, behaviour);
-                
-                UdonSharpUtils.SetDirty(behaviour);
-                UdonSharpUtils.SetDirty(backingBehaviour);
-            }
-            
-            // Handle U# behaviours that have been added to a prefab via Added Component > Apply To Prefab, but have not had their backing behaviour added
-            // if (isPartOfPrefabInstance && 
-            //     backingBehaviour != null && 
-            //     !PrefabUtility.IsPartOfPrefabInstance(backingBehaviour))
-            // {
-            //     PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(behaviour);
-            //
-            //     if (modifications != null)
-            //     {
-            //         
-            //     }
-            // }
-
-            UdonSharpProgramAsset programAsset = GetUdonSharpProgramAsset(behaviour);
-
-            if (backingBehaviour.programSource == null)
-            {
-                backingBehaviour.programSource = programAsset;
-                if (backingBehaviour.programSource == null)
-                    UdonSharpUtils.LogError($"Unable to find valid U# program asset associated with script '{behaviour}'", behaviour);
-                
-                UdonSharpUtils.SetDirty(backingBehaviour);
-            }
-
-            if (_serializedProgramAssetField.GetValue(backingBehaviour) == null)
-            {
-                SerializedObject componentAsset = new SerializedObject(backingBehaviour);
-                SerializedProperty serializedProgramAssetProperty = componentAsset.FindProperty("serializedProgramAsset");
-
-                serializedProgramAssetProperty.objectReferenceValue = programAsset.SerializedProgramAsset;
-
-                if (withUndo)
-                    componentAsset.ApplyModifiedProperties();
-                else
-                    componentAsset.ApplyModifiedPropertiesWithoutUndo();
-            }
-
-            if (backingBehaviour.enabled != behaviour.enabled)
-            {
-                if (withUndo)
-                    Undo.RecordObject(backingBehaviour, "Enabled change");
-                    
-                backingBehaviour.enabled = behaviour.enabled;
-
-                if (!withUndo)
-                {
-                    UdonSharpUtils.SetDirty(backingBehaviour);
-                }
-            }
-
-        #if UDONSHARP_DEBUG
-            backingBehaviour.hideFlags &= ~HideFlags.HideInInspector;
-        #else
-            backingBehaviour.hideFlags |= HideFlags.HideInInspector;
-        #endif
-            
-            ((UdonSharpProgramAsset)backingBehaviour.programSource)?.UpdateProgram();
-        }
-
-        internal static void RunBehaviourSetup(UdonSharpBehaviour behaviour)
-        {
-            RunBehaviourSetup(behaviour, false);
-        }
-
-        internal static void RunBehaviourSetupWithUndo(UdonSharpBehaviour behaviour)
-        {
-            RunBehaviourSetup(behaviour, true);
         }
 
         /// <summary>
@@ -811,17 +588,6 @@ namespace Anatawa12.UdonSharpMigrationFix
         }
 
         private static Dictionary<UdonBehaviour, UdonSharpBehaviour> _proxyBehaviourLookup = new Dictionary<UdonBehaviour, UdonSharpBehaviour>();
-
-        /// <summary>
-        /// Finds an existing proxy behaviour, if none exists returns null
-        /// </summary>
-        /// <param name="udonBehaviour"></param>
-        /// <returns></returns>
-        [Obsolete("FindProxyBehaviour is deprecated, use GetProxyBehaviour instead.")]
-        public static UdonSharpBehaviour FindProxyBehaviour(UdonBehaviour udonBehaviour)
-        {
-            return FindProxyBehaviour_Internal(udonBehaviour);
-        }
 
         /// <summary>
         /// Finds an existing proxy behaviour, if none exists returns null
@@ -859,7 +625,6 @@ namespace Anatawa12.UdonSharpMigrationFix
         /// </summary>
         /// <param name="udonBehaviour"></param>
         /// <returns></returns>
-        [PublicAPI]
         public static UdonSharpBehaviour GetProxyBehaviour(UdonBehaviour udonBehaviour)
         {
             return GetProxyBehaviour_Internal(udonBehaviour);
@@ -870,7 +635,6 @@ namespace Anatawa12.UdonSharpMigrationFix
         /// </summary>
         /// <param name="udonBehaviour"></param>
         /// <returns></returns>
-        [PublicAPI]
         public static bool IsUdonSharpBehaviour(UdonBehaviour udonBehaviour)
         {
             return udonBehaviour.programSource != null && 
@@ -884,7 +648,6 @@ namespace Anatawa12.UdonSharpMigrationFix
         /// </summary>
         /// <param name="udonBehaviour"></param>
         /// <returns></returns>
-        [PublicAPI]
         public static Type GetUdonSharpBehaviourType(UdonBehaviour udonBehaviour)
         {
             if (!IsUdonSharpBehaviour(udonBehaviour))
@@ -893,23 +656,11 @@ namespace Anatawa12.UdonSharpMigrationFix
             return ((UdonSharpProgramAsset)udonBehaviour.programSource).GetClass();
         }
 
-        private static readonly FieldInfo _skipEventsField = typeof(UdonSharpBehaviour).GetField("_skipEvents", BindingFlags.Static | BindingFlags.NonPublic);
-
-        /// <summary>
-        /// Used to disable sending events to UdonSharpBehaviours for OnEnable, OnDisable, and OnDestroy since they are not always in a valid state to be recognized as proxies during these events.
-        /// </summary>
-        /// <param name="ignore"></param>
-        internal static void SetIgnoreEvents(bool ignore)
-        {
-            _skipEventsField.SetValue(null, ignore);
-        }
-
         /// <summary>
         /// Gets the C# version of an UdonSharpBehaviour that proxies an UdonBehaviour with the program asset for the matching UdonSharpBehaviour type
         /// </summary>
         /// <param name="udonBehaviour"></param>
         /// <returns></returns>
-        [PublicAPI]
         private static UdonSharpBehaviour GetProxyBehaviour_Internal(UdonBehaviour udonBehaviour)
         {
             if (udonBehaviour == null)
@@ -918,34 +669,6 @@ namespace Anatawa12.UdonSharpMigrationFix
             UdonSharpBehaviour proxyBehaviour = FindProxyBehaviour_Internal(udonBehaviour);
             
             return proxyBehaviour;
-        }
-
-        /// <summary>
-        /// Destroys an UdonSharpBehaviour proxy and its underlying UdonBehaviour
-        /// </summary>
-        /// <param name="behaviour"></param>
-        [PublicAPI]
-        public static void DestroyImmediate(UdonSharpBehaviour behaviour)
-        {
-            UdonBehaviour backingBehaviour = GetBackingUdonBehaviour(behaviour);
-            
-            Object.DestroyImmediate(behaviour);
-
-            if (backingBehaviour)
-            {
-                _proxyBehaviourLookup.Remove(backingBehaviour);
-
-                SetIgnoreEvents(true);
-
-                try
-                {
-                    Object.DestroyImmediate(backingBehaviour);
-                }
-                finally
-                {
-                    SetIgnoreEvents(false);
-                }
-            }
         }
     }
 }
