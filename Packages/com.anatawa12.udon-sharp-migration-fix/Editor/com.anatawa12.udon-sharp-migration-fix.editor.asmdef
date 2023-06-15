@@ -30,7 +30,7 @@
         "0Harmony.dll",
         "Sirenix.OdinInspector.Editor.dll"
     ],
-    "autoReferenced": true,
+    "autoReferenced": false,
     "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
