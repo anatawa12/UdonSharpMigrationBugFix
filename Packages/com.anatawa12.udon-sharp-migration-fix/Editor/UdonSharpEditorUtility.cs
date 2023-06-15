@@ -2,17 +2,14 @@
 using System;
 using JetBrains.Annotations;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using UdonSharp;
 using UdonSharp.Compiler;
-using UdonSharp.Serialization;
 using UdonSharp.Updater;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Profiling;
 using VRC.Udon;
 using VRC.Udon.Common;
 using VRC.Udon.Common.Interfaces;
@@ -36,7 +33,7 @@ namespace UdonSharpEditor
     /// <summary>
     /// Various utility functions for interacting with U# behaviours and proxies for editor scripting.
     /// </summary>
-    public static class UdonSharpEditorUtility
+    public static class UdonSharpEditorUtility1
     {
         /// <summary>
         /// Deletes an UdonSharp program asset and the serialized program asset associated with it
@@ -272,11 +269,6 @@ namespace UdonSharpEditor
             UdonSharpUtils.SetDirty(behaviour);
         }
 
-        private static bool HasSceneBehaviourUpgradeFlag(UdonBehaviour behaviour)
-        {
-            return behaviour.publicVariables.TryGetVariableValue<bool>(UDONSHARP_SCENE_BEHAVIOUR_UPGRADE_MARKER, out bool sceneBehaviourUpgraded) && sceneBehaviourUpgraded;
-        }
-
         private static readonly FieldInfo _publicVariablesBytesStrField = typeof(UdonBehaviour)
             .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
             .First(fieldInfo => fieldInfo.Name == "serializedPublicVariablesBytesString");
@@ -285,6 +277,23 @@ namespace UdonSharpEditor
             .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
             .First(e => e.Name == "publicVariablesUnityEngineObjects");
 
+        internal static bool IsAnyProgramAssetOutOfDate()
+        {
+            UdonSharpProgramAsset[] programs = UdonSharpProgramAsset.GetAllUdonSharpPrograms();
+            
+            bool isOutOfDate = false;
+            foreach (UdonSharpProgramAsset programAsset in programs)
+            {
+                if (programAsset.CompiledVersion != UdonSharpProgramVersion.CurrentVersion)
+                {
+                    isOutOfDate = true;
+                    break;
+                }
+            }
+
+            return isOutOfDate;
+        }
+
         /// <summary>
         /// Runs a two pass upgrade of a set of prefabs, assumes all dependencies of the prefabs are included, otherwise the process could fail to maintain references.
         /// First creates a new UdonSharpBehaviour proxy script and hooks it to a given UdonBehaviour. Then in a second pass goes over all behaviours and serializes their data into the C# proxy and wipes their old data out.
@@ -292,8 +301,7 @@ namespace UdonSharpEditor
         /// <param name="prefabRootEnumerable"></param>
         internal static void UpgradePrefabs(IEnumerable<GameObject> prefabRootEnumerable)
         {
-            if (UdonSharpProgramAsset.IsAnyProgramAssetSourceDirty() ||
-                UdonSharpProgramAsset.IsAnyProgramAssetOutOfDate())
+            if (UdonSharpProgramAsset.IsAnyProgramAssetSourceDirty() || IsAnyProgramAssetOutOfDate())
             {
                 UdonSharpCompilerV1.CompileSync();
             }
@@ -601,7 +609,7 @@ namespace UdonSharpEditor
                         if (!NeedsSerializationUpgrade(udonBehaviour))
                             continue;
 
-                        CopyUdonToProxy(GetProxyBehaviour(udonBehaviour), ProxySerializationPolicy.RootOnly);
+                        UdonSharpEditorUtility.CopyUdonToProxy(GetProxyBehaviour(udonBehaviour), ProxySerializationPolicy.RootOnly);
 
                         // We can't remove this data for backwards compatibility :'(
                         // If we nuke the data, the unity object array on the underlying storage may change.
@@ -634,155 +642,6 @@ namespace UdonSharpEditor
             }
             
             UdonSharpUtils.Log("Prefab upgrade pass finished");
-        }
-        
-        internal static void UpgradeSceneBehaviours(IEnumerable<UdonBehaviour> behaviours)
-        {
-            if (EditorApplication.isPlaying)
-                return;
-
-            if (UdonSharpUtils.DoesUnityProjectHaveCompileErrors())
-            {
-                UdonSharpUtils.LogError("C# scripts have compile errors, cannot run scene upgrade.");
-                return;
-            }
-            
-            UdonSharpProgramAsset.CompileAllCsPrograms();
-            UdonSharpCompilerV1.WaitForCompile();
-                
-            if (UdonSharpProgramAsset.AnyUdonSharpScriptHasError())
-            {
-                // Give chance to compile and resolve errors in case they are fixed already
-                UdonSharpCompilerV1.CompileSync();
-                    
-                if (UdonSharpProgramAsset.AnyUdonSharpScriptHasError())
-                {
-                    UdonSharpUtils.LogError("U# scripts have compile errors, scene upgrade deferred until script errors are resolved.");
-                    return;
-                }
-            }
-            
-            // Create proxies if they do not exist
-            foreach (UdonBehaviour udonBehaviour in behaviours)
-            {
-                if (!IsUdonSharpBehaviour(udonBehaviour))
-                    continue;
-                
-                if (PrefabUtility.IsPartOfPrefabInstance(udonBehaviour) &&
-                    PrefabUtility.IsAddedComponentOverride(udonBehaviour))
-                    continue;
-
-                if (GetProxyBehaviour(udonBehaviour) == null)
-                {
-                    if (PrefabUtility.IsPartOfPrefabInstance(udonBehaviour) &&
-                        PrefabUtility.GetCorrespondingObjectFromSource(udonBehaviour) != udonBehaviour)
-                    {
-                        UdonSharpUtils.LogError($"Cannot upgrade scene behaviour '{udonBehaviour}' since its prefab must be upgraded.", udonBehaviour);
-                        continue;
-                    }
-                    
-                    Type udonSharpBehaviourType = GetUdonSharpBehaviourType(udonBehaviour);
-
-                    if (udonSharpBehaviourType == null)
-                    {
-                        UdonSharpUtils.LogError($"Class script referenced by program asset '{udonBehaviour.programSource}' has no Type", udonBehaviour.programSource);
-                        continue;
-                    }
-
-                    if (!udonSharpBehaviourType.IsSubclassOf(typeof(UdonSharpBehaviour)))
-                    {
-                        UdonSharpUtils.LogError($"Class script referenced by program asset '{udonBehaviour.programSource}' is not an UdonSharpBehaviour", udonBehaviour.programSource);
-                        continue;
-                    }
-                    
-                    UdonSharpBehaviour newProxy = (UdonSharpBehaviour)udonBehaviour.gameObject.AddComponent(udonSharpBehaviourType);
-                    newProxy.enabled = udonBehaviour.enabled;
-
-                    SetBackingUdonBehaviour(newProxy, udonBehaviour);
-
-                    if (!PrefabUtility.IsAddedComponentOverride(udonBehaviour))
-                    {
-                        MoveComponentRelativeToComponent(newProxy, udonBehaviour, true);
-                    }
-                    else
-                    {
-                        UdonSharpUtils.LogWarning($"Cannot reorder internal UdonBehaviour for '{udonBehaviour}' during upgrade because it is on a prefab instance.", udonBehaviour.gameObject);
-                    }
-
-                    UdonSharpUtils.SetDirty(newProxy);
-                }
-                
-                if (GetBehaviourVersion(udonBehaviour) == UdonSharpBehaviourVersion.V0)
-                    SetBehaviourVersion(udonBehaviour, UdonSharpBehaviourVersion.V0DataUpgradeNeeded);
-            }
-
-            // Copy data over from UdonBehaviour to UdonSharpBehaviour
-            foreach (UdonBehaviour udonBehaviour in behaviours)
-            {
-                if (!IsUdonSharpBehaviour(udonBehaviour))
-                    continue;
-                
-                bool needsPrefabInstanceUpgrade = false;
-
-                // Checks if the version is below V1 or if it needs the prefab instance upgrade
-                UdonSharpBehaviourVersion behaviourVersion = GetBehaviourVersion(udonBehaviour);
-                if (behaviourVersion >= UdonSharpBehaviourVersion.V1)
-                {
-                    // Check if the prefab instance has a prefab that was upgraded causing the string data to be copied, but has a delta'd UnityEngine.Object storage array
-                    if (PrefabUtility.IsPartOfPrefabInstance(udonBehaviour) &&
-                        !HasSceneBehaviourUpgradeFlag(udonBehaviour))
-                    {
-                        UdonBehaviour prefabSource = PrefabUtility.GetCorrespondingObjectFromSource(udonBehaviour);
-                    
-                        if (prefabSource && BehaviourRequiresBackwardsCompatibilityPersistence(prefabSource))
-                        {
-                            PropertyModification[] modifications =
-                                PrefabUtility.GetPropertyModifications(udonBehaviour);
-                    
-                            if (modifications != null &&
-                                modifications.Any(e => e.propertyPath.StartsWith("publicVariablesUnityEngineObjects", StringComparison.Ordinal)))
-                            {
-                                needsPrefabInstanceUpgrade = true;
-                            }
-                        }
-                    }
-
-                    if (!needsPrefabInstanceUpgrade)
-                        continue;
-                }
-                
-                UdonSharpBehaviour proxy = GetProxyBehaviour(udonBehaviour);
-
-                if (proxy == null)
-                {
-                    UdonSharpUtils.LogWarning($"UdonSharpBehaviour '{udonBehaviour}' could not be upgraded since it is missing a proxy", udonBehaviour);
-                    continue;
-                }
-
-                try
-                {
-                    CopyUdonToProxy(proxy, ProxySerializationPolicy.RootOnly);
-                }
-                catch (Exception e)
-                {
-                    UdonSharpUtils.LogError($"Encountered exception while upgrading scene behaviour {proxy}, exception: {e}", proxy);
-                    continue;
-                }
-
-                // Nuke out old data now because we want only the C# side to own the data from this point on
-                
-                ClearBehaviourVariables(udonBehaviour, true);
-                            
-                SetBehaviourVersion(udonBehaviour, UdonSharpBehaviourVersion.V1);
-                SetSceneBehaviourUpgraded(udonBehaviour);
-
-                if (needsPrefabInstanceUpgrade)
-                    UdonSharpUtils.Log($"Scene behaviour '{udonBehaviour.name}' needed UnityEngine.Object upgrade pass", udonBehaviour);
-
-                UdonSharpUtils.SetDirty(proxy);
-                
-                UdonSharpUtils.Log($"Upgraded scene behaviour '{udonBehaviour.name}'", udonBehaviour);
-            }
         }
 
         internal static bool BehaviourNeedsSetup(UdonSharpBehaviour behaviour)
@@ -1059,188 +918,6 @@ namespace UdonSharpEditor
             
             return proxyBehaviour;
         }
-        
-        // private static readonly FieldInfo _publicVariablesUnityEngineObjectsField = typeof(UdonBehaviour).GetField("publicVariablesUnityEngineObjects", BindingFlags.NonPublic | BindingFlags.Instance);
-        //
-        // private static IEnumerable<Object> GetUdonBehaviourObjectReferences(UdonBehaviour behaviour)
-        // {
-        //     return (List<Object>)_publicVariablesUnityEngineObjectsField.GetValue(behaviour);
-        // }
-        //
-        // internal static ImmutableHashSet<GameObject> CollectReferencedPrefabs(GameObject[] roots)
-        // {
-        //     HashSet<GameObject> allReferencedPrefabs = new HashSet<GameObject>();
-        //
-        //     foreach (var root in roots)
-        //     {
-        //         foreach (var udonBehaviour in root.GetComponentsInChildren<UdonBehaviour>(true))
-        //         {
-        //             if (PrefabUtility.IsPartOfPrefabInstance(udonBehaviour))
-        //             {
-        //                 allReferencedPrefabs.Add(PrefabUtility.GetNearestPrefabInstanceRoot(udonBehaviour));
-        //             }
-        //         }
-        //     }
-        //
-        //     HashSet<GameObject> visitedRoots = new HashSet<GameObject>();
-        //     HashSet<GameObject> currentRoots = new HashSet<GameObject>(roots);
-        //
-        //     while (currentRoots.Count > 0)
-        //     {
-        //         foreach (var root in currentRoots)
-        //         {
-        //             if (visitedRoots.Contains(root))
-        //                 continue;
-        //
-        //             foreach (var udonBehaviour in root.GetComponentsInChildren<UdonBehaviour>(true))
-        //             {
-        //                 var objects = GetUdonBehaviourObjectReferences(udonBehaviour);
-        //
-        //                 foreach (var obj in objects)
-        //                 {
-        //                     if ((obj is GameObject || obj is Component) &&
-        //                         PrefabUtility.IsPartOfPrefabAsset(obj))
-        //                     {
-        //                         
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        //
-        //     return allReferencedPrefabs.ToImmutableHashSet();
-        // }
-
-        internal static ImmutableHashSet<Object> CollectUdonSharpBehaviourRootDependencies(UdonSharpBehaviour behaviour)
-        {
-            if (!IsProxyBehaviour(behaviour))
-                return ImmutableHashSet<Object>.Empty;
-            
-            UsbSerializationContext.Dependencies.Clear();
-            
-            CopyProxyToUdon(behaviour, ProxySerializationPolicy.CollectRootDependencies);
-
-            return UsbSerializationContext.Dependencies.ToImmutableHashSet();
-        }
-
-        /// <summary>
-        /// Copies the state of the proxy to its backing UdonBehaviour
-        /// </summary>
-        /// <param name="proxy"></param>
-        [PublicAPI]
-        public static void CopyProxyToUdon(UdonSharpBehaviour proxy)
-        {
-            CopyProxyToUdon(proxy, ProxySerializationPolicy.Default);
-        }
-
-        /// <summary>
-        /// Copies the state of the UdonBehaviour to its proxy object
-        /// </summary>
-        /// <param name="proxy"></param>
-        [PublicAPI]
-        public static void CopyUdonToProxy(UdonSharpBehaviour proxy)
-        {
-            CopyUdonToProxy(proxy, ProxySerializationPolicy.Default);
-        }
-
-        /// <summary>
-        /// Copies the state of the proxy to its backing UdonBehaviour
-        /// </summary>
-        /// <param name="proxy"></param>
-        /// <param name="serializationPolicy"></param>
-        [PublicAPI]
-        public static void CopyProxyToUdon(UdonSharpBehaviour proxy, ProxySerializationPolicy serializationPolicy)
-        {
-            if (serializationPolicy.MaxSerializationDepth == 0)
-                return;
-
-            UdonSharpProgramAsset programAsset = GetUdonSharpProgramAsset(proxy);
-            
-            if (programAsset == null)
-                throw new InvalidOperationException($"Cannot run serialization on U# behaviour '{proxy}', the U# program asset on this component is null. Try restarting Unity and if problems persist, verify that you have a UdonSharpProgramAsset with the script '{proxy.GetType()}' assigned to it.");
-
-            if (programAsset.ScriptVersion < UdonSharpProgramVersion.CurrentVersion)
-                throw new InvalidOperationException($"Cannot run serialization on U# behaviour '{proxy}' with outdated script version, wait until program assets have compiled.");
-
-            if (programAsset.CompiledVersion < UdonSharpProgramVersion.CurrentVersion)
-                throw new InvalidOperationException($"Cannot run serialization on U# behaviour '{proxy}' with outdated behaviour version, wait until program assets have compiled.");
-
-            Profiler.BeginSample("CopyProxyToUdon");
-
-            try
-            {
-                lock (UsbSerializationContext.UsbLock)
-                {
-                    var udonBehaviourStorage = new SimpleValueStorage<UdonBehaviour>(GetBackingUdonBehaviour(proxy));
-
-                    ProxySerializationPolicy lastPolicy = UsbSerializationContext.CurrentPolicy;
-                    UsbSerializationContext.CurrentPolicy = serializationPolicy;
-
-                    Serializer.CreatePooled(proxy.GetType()).WriteWeak(udonBehaviourStorage, proxy);
-
-                    UsbSerializationContext.CurrentPolicy = lastPolicy;
-                }
-            }
-            finally
-            {
-                Profiler.EndSample();
-            }
-        }
-
-        /// <summary>
-        /// Copies the state of the UdonBehaviour to its proxy object
-        /// </summary>
-        /// <param name="proxy"></param>
-        /// <param name="serializationPolicy"></param>
-        [PublicAPI]
-        public static void CopyUdonToProxy(UdonSharpBehaviour proxy, ProxySerializationPolicy serializationPolicy)
-        {
-            if (serializationPolicy.MaxSerializationDepth == 0)
-                return;
-
-            UdonSharpProgramAsset programAsset = GetUdonSharpProgramAsset(proxy);
-
-            if (programAsset == null)
-                throw new InvalidOperationException($"Cannot run serialization on U# behaviour '{proxy}', the U# program asset on this component is null. Try restarting Unity and if problems persist, verify that you have a UdonSharpProgramAsset with the script '{proxy.GetType()}' assigned to it.");
-
-            if (programAsset.ScriptVersion < UdonSharpProgramVersion.CurrentVersion)
-                throw new InvalidOperationException($"Cannot run serialization on U# behaviour '{proxy}' with outdated script version, wait until program assets have compiled.");
-
-            if (programAsset.CompiledVersion < UdonSharpProgramVersion.CurrentVersion)
-                throw new InvalidOperationException($"Cannot run serialization on U# behaviour '{proxy}' with outdated behaviour version, wait until program assets have compiled.");
-            
-            Profiler.BeginSample("CopyUdonToProxy");
-
-            try
-            {
-                lock (UsbSerializationContext.UsbLock)
-                {
-                    var udonBehaviourStorage = new SimpleValueStorage<UdonBehaviour>(GetBackingUdonBehaviour(proxy));
-
-                    ProxySerializationPolicy lastPolicy = UsbSerializationContext.CurrentPolicy;
-                    UsbSerializationContext.CurrentPolicy = serializationPolicy;
-
-                    object proxyObj = proxy;
-                    Serializer.CreatePooled(proxy.GetType()).ReadWeak(ref proxyObj, udonBehaviourStorage);
-
-                    UsbSerializationContext.CurrentPolicy = lastPolicy;
-                }
-            }
-            finally
-            {
-                Profiler.EndSample();
-            }
-        }
-
-        [PublicAPI]
-        public static UdonBehaviour CreateBehaviourForProxy(UdonSharpBehaviour udonSharpBehaviour)
-        {
-            UdonBehaviour backingBehaviour = GetBackingUdonBehaviour(udonSharpBehaviour);
-
-            CopyProxyToUdon(udonSharpBehaviour);
-
-            return backingBehaviour;
-        }
 
         /// <summary>
         /// Destroys an UdonSharpBehaviour proxy and its underlying UdonBehaviour
@@ -1268,20 +945,6 @@ namespace UdonSharpEditor
                     SetIgnoreEvents(false);
                 }
             }
-        }
-
-        internal static void DeletePrefabBuildAssets()
-        {
-        #if UDONSHARP_DEBUG
-            return;
-        #endif
-            
-            string prefabBuildPath = UdonSharpLocator.IntermediatePrefabPath;
-
-            if (!Directory.Exists(prefabBuildPath))
-                return;
-            
-            AssetDatabase.DeleteAsset(prefabBuildPath);
         }
     }
 }

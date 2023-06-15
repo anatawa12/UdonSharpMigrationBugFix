@@ -23,25 +23,12 @@ namespace UdonSharpEditor
     [InitializeOnLoad]
     internal class UdonSharpUpgrader
     {
-        static UdonSharpUpgrader()
-        {
-            EditorApplication.update += OnEditorUpdate;
-        }
-
-        private static void OnEditorUpdate()
-        {
-            if (_needsProgramUpgradePass && !EditorApplication.isCompiling && !EditorApplication.isUpdating)
-            {
-                UpgradeScripts();
-            }
-        }
 
         [MenuItem("VRChat SDK/Udon Sharp/Force Upgrade")]
         internal static void ForceUpgrade()
         {
             UdonSharpProgramAsset.GetAllUdonSharpPrograms().ForEach(QueueUpgrade);
             UdonSharpEditorCache.Instance.QueueUpgradePass();
-            UdonSharpEditorManager._didSceneUpgrade = false;
         }
 
         private static bool _needsProgramUpgradePass;
@@ -57,10 +44,14 @@ namespace UdonSharpEditor
 
             if (programAsset.ScriptVersion >= UdonSharpProgramVersion.CurrentVersion)
                 return;
-
-            _needsProgramUpgradePass = true;
         }
 
+        internal static bool NeedsUpgradeScripts()
+        {
+            throw new NotImplementedException();
+        }
+
+        /*
         /// <summary>
         /// Runs upgrade process on all U# scripts
         /// </summary>
@@ -241,7 +232,7 @@ namespace UdonSharpEditor
                 odinSerializeName = QualifiedName(odinSerializeName, IdentifierName("OdinSerialize"));
 
                 // Somehow it seems like there's literally no decent way to maintain the indent on inserted code so we'll just inline the comment because Roslyn is dumb
-                SyntaxTrivia commentTrivia = Comment(" /* UdonSharp auto-upgrade: serialization */ ");
+                SyntaxTrivia commentTrivia = Comment(" /* UdonSharp auto-upgrade: serialization * / ");
                 AttributeListSyntax newAttribList = AttributeList(SeparatedList(new [] { Attribute(odinSerializeName)})).WithTrailingTrivia(commentTrivia);
 
                 SyntaxList<AttributeListSyntax> attributeList = fieldDeclaration.AttributeLists;
@@ -265,5 +256,6 @@ namespace UdonSharpEditor
                 return fieldDeclaration.WithAttributeLists(attributeList);
             }
         }
+        // */
     }
 }
