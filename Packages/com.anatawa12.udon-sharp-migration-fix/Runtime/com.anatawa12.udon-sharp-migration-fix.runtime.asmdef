@@ -1,5 +1,5 @@
 {
-    "name": "UdonSharp.Runtime",
+    "name": "com.anatawa12.udon-sharp-migration-fix.runtime",
     "references": [
         "VRC.Udon.Serialization.OdinSerializer",
         "VRC.Udon"

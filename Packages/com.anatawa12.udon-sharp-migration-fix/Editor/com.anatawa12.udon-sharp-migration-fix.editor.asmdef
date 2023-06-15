@@ -1,5 +1,5 @@
 {
-    "name": "UdonSharp.Editor",
+    "name": "com.anatawa12.udon-sharp-migration-fix.editor",
     "references": [
         "VRC.Udon",
         "VRC.Udon.Editor",
