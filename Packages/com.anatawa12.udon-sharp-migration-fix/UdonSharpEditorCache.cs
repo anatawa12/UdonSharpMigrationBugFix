@@ -1,9 +1,9 @@
 ﻿
 using System;
 using System.IO;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
-using VRC.Udon.Serialization.OdinSerializer;
 
 namespace Anatawa12.UdonSharpMigrationFix
 {
@@ -13,15 +13,17 @@ namespace Anatawa12.UdonSharpMigrationFix
     [InitializeOnLoad]
     internal class UdonSharpEditorCache
     {
-    #region Instance and serialization management
         [Serializable]
-        private struct UdonSharpCacheStorage
+        public struct ProjectInfo
         {
-            public ProjectInfo info;
+            public bool projectNeedsUpgrade;
         }
 
-        private const string CACHE_DIR_PATH = "Library/UdonSharpCache/";
-        private const string CACHE_FILE_PATH = "Library/UdonSharpCache/UdonSharpMigrationFixEditorCache.dat"; // Old cache ended in .asset
+        #region Instance and serialization management
+
+        private static readonly Encoding JsonUTF8 = new UTF8Encoding(false);
+
+        private const string CacheFilePath = "Library/com.anatawa12.udon-sharp-migration-fix.editor.json";
 
         public static UdonSharpEditorCache Instance => GetInstance();
 
@@ -38,11 +40,10 @@ namespace Anatawa12.UdonSharpMigrationFix
                 _instance = new UdonSharpEditorCache();
                 _instance._info.projectNeedsUpgrade = true;
 
-                if (!File.Exists(CACHE_FILE_PATH))
+                if (!File.Exists(CacheFilePath))
                     return _instance;
-                
-                UdonSharpCacheStorage storage = SerializationUtility.DeserializeValue<UdonSharpCacheStorage>(File.ReadAllBytes(CACHE_FILE_PATH), DataFormat.Binary);
-                _instance._info = storage.info;
+
+                _instance._info = JsonUtility.FromJson<ProjectInfo>(File.ReadAllText(CacheFilePath, JsonUTF8));
 
                 return _instance;
             }
@@ -71,7 +72,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                 if (script)
                 {
                 }
-                else if(AssetDatabase.IsValidFolder(assetPath))
+                else if (AssetDatabase.IsValidFolder(assetPath))
                 {
                 }
 
@@ -88,55 +89,30 @@ namespace Anatawa12.UdonSharpMigrationFix
         {
             if (_infoDirty)
             {
-                if (!Directory.Exists(CACHE_DIR_PATH))
-                    Directory.CreateDirectory(CACHE_DIR_PATH);
-
-                UdonSharpCacheStorage storage = new UdonSharpCacheStorage() {
-                    info = _info,
-                };
-                File.WriteAllBytes(CACHE_FILE_PATH, SerializationUtility.SerializeValue<UdonSharpCacheStorage>(storage, DataFormat.Binary));
+                File.WriteAllText(CacheFilePath, JsonUtility.ToJson(_info), JsonUTF8);
                 _infoDirty = false;
             }
         }
-    #endregion
 
-    #region Project Global State
-        
-        [Serializable]
-        public struct ProjectInfo
-        {
-            public bool projectNeedsUpgrade;
-        }
+        #endregion
+
+        #region Project Global State
 
         private bool _infoDirty;
         private ProjectInfo _info;
 
-        public ProjectInfo Info
-        {
-            get => _info;
-            private set
-            {
-                _info = value;
-                _infoDirty = true;
-            }
-        }
+        public ProjectInfo Info => _info;
 
         public void QueueUpgradePass()
         {
-            ProjectInfo info = Info;
-
-            info.projectNeedsUpgrade = true;
-
-            Info = info;
+            _info.projectNeedsUpgrade = true;
+            _infoDirty = true;
         }
-        
+
         public void ClearUpgradePassQueue()
         {
-            ProjectInfo info = Info;
-
-            info.projectNeedsUpgrade = false;
-
-            Info = info;
+            _info.projectNeedsUpgrade = false;
+            _infoDirty = true;
         }
 
         #endregion
