@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using UdonSharp;
 using UdonSharp.Compiler;
 using UnityEditor;
@@ -15,7 +16,14 @@ namespace Anatawa12.UdonSharpMigrationFix
     {
         static UdonSharpEditorManager()
         {
-            EditorApplication.update += OnEditorUpdate;
+            // Append OnEditorUpdate to head of the list.
+            EditorApplication.CallbackFunction oldValue, newValue;
+            var onEditorUpdate = new[] { new EditorApplication.CallbackFunction(OnEditorUpdate) };
+            do
+            {
+                oldValue = EditorApplication.update;
+                newValue = onEditorUpdate[0] + oldValue;
+            } while (Interlocked.CompareExchange(ref EditorApplication.update, newValue, oldValue) != newValue);
         }
 
         private static void OnEditorUpdate()
