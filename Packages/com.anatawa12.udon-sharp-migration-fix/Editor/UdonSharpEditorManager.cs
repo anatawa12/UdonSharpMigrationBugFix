@@ -81,40 +81,26 @@ namespace Anatawa12.UdonSharpMigrationFix
 
         private static IEnumerable<GameObject> GetAllPrefabsWithUdonSharpBehaviours()
         {
-            List<GameObject> roots = new List<GameObject>();
-            List<UdonBehaviour> behaviourScratch = new List<UdonBehaviour>();
+            var roots = new List<GameObject>();
+            var behaviourScratch = new List<UdonBehaviour>();
             
-            IEnumerable<string> allPrefabPaths = AssetDatabase.FindAssets("t:prefab").Select(AssetDatabase.GUIDToAssetPath);
-
-            foreach (string prefabPath in allPrefabPaths)
+            foreach (var prefabPath in AssetDatabase.FindAssets("t:prefab").Select(AssetDatabase.GUIDToAssetPath))
             {
                 GameObject prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
                 
                 if (prefabRoot == null)
                     continue;
                 
-                PrefabAssetType prefabAssetType = PrefabUtility.GetPrefabAssetType(prefabRoot);
-                if (prefabAssetType == PrefabAssetType.Model || 
-                    prefabAssetType == PrefabAssetType.MissingAsset)
+                var prefabAssetType = PrefabUtility.GetPrefabAssetType(prefabRoot);
+                if (prefabAssetType == PrefabAssetType.Model || prefabAssetType == PrefabAssetType.MissingAsset)
                     continue;
 
-                prefabRoot.GetComponentsInChildren<UdonBehaviour>(true, behaviourScratch);
+                prefabRoot.GetComponentsInChildren(true, behaviourScratch);
                 
                 if (behaviourScratch.Count == 0)
                     continue;
 
-                bool hasUdonSharpBehaviour = false;
-
-                foreach (UdonBehaviour behaviour in behaviourScratch)
-                {
-                    if (UdonSharpEditorUtility1.IsUdonSharpBehaviour(behaviour))
-                    {
-                        hasUdonSharpBehaviour = true;
-                        break;
-                    }
-                }
-
-                if (hasUdonSharpBehaviour)
+                if (behaviourScratch.Any(UdonSharpEditorUtility1.IsUdonSharpBehaviour))
                     roots.Add(prefabRoot);
             }
 
@@ -128,32 +114,22 @@ namespace Anatawa12.UdonSharpMigrationFix
         {
             List<UdonBehaviour> behaviours = new List<UdonBehaviour>();
             
-            foreach (string importedAsset in importedAssets)    
+            foreach (var importedAsset in importedAssets)    
             {
                 if (!importedAsset.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 GameObject prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(importedAsset);
                 
-                prefabRoot.GetComponentsInChildren<UdonBehaviour>(true, behaviours);
+                prefabRoot.GetComponentsInChildren(true, behaviours);
 
                 if (behaviours.Count == 0)
                     continue;
 
-                bool needsUpdate = false;
+                var needsUpdate = behaviours
+                    .Where(UdonSharpEditorUtility1.IsUdonSharpBehaviour)
+                    .Any(behaviour => UdonSharpEditorUtility1.GetBehaviourVersion(behaviour) < UdonSharpBehaviourVersion.CurrentVersion);
 
-                foreach (UdonBehaviour behaviour in behaviours)
-                {
-                    if (!UdonSharpEditorUtility1.IsUdonSharpBehaviour(behaviour))
-                        continue;
-
-                    if (UdonSharpEditorUtility1.GetBehaviourVersion(behaviour) < UdonSharpBehaviourVersion.CurrentVersion)
-                    {
-                        needsUpdate = true;
-                        break;
-                    }
-                }
-                
                 if (!needsUpdate)
                     continue;
                 

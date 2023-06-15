@@ -30,7 +30,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         NextVer,
         CurrentVersion = NextVer - 1,
     }
-    
+
     /// <summary>
     /// Various utility functions for interacting with U# behaviours and proxies for editor scripting.
     /// </summary>
@@ -68,12 +68,12 @@ namespace Anatawa12.UdonSharpMigrationFix
 
         private static Dictionary<MonoScript, UdonSharpProgramAsset> _programAssetLookup;
         private static Dictionary<Type, UdonSharpProgramAsset> _programAssetTypeLookup;
-        
+
         private static void InitTypeLookups()
         {
-            if (_programAssetLookup != null) 
+            if (_programAssetLookup != null)
                 return;
-            
+
             _programAssetLookup = new Dictionary<MonoScript, UdonSharpProgramAsset>();
             _programAssetTypeLookup = new Dictionary<Type, UdonSharpProgramAsset>();
 
@@ -81,7 +81,8 @@ namespace Anatawa12.UdonSharpMigrationFix
 
             foreach (UdonSharpProgramAsset programAsset in udonSharpProgramAssets)
             {
-                if (programAsset && programAsset.sourceCsScript != null && !_programAssetLookup.ContainsKey(programAsset.sourceCsScript))
+                if (programAsset && programAsset.sourceCsScript != null &&
+                    !_programAssetLookup.ContainsKey(programAsset.sourceCsScript))
                 {
                     _programAssetLookup.Add(programAsset.sourceCsScript, programAsset);
                     if (programAsset.GetClass() != null)
@@ -122,7 +123,8 @@ namespace Anatawa12.UdonSharpMigrationFix
 
         internal const string BackingFieldName = "_udonSharpBackingUdonBehaviour";
 
-        private static readonly FieldInfo _backingBehaviourField = typeof(UdonSharpBehaviour).GetField(BackingFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo _backingBehaviourField =
+            typeof(UdonSharpBehaviour).GetField(BackingFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
 
         /// <summary>
         /// Gets the backing UdonBehaviour for a proxy
@@ -146,7 +148,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         {
             if (behaviour.publicVariables.TryGetVariableValue<int>(UDONSHARP_BEHAVIOUR_VERSION_KEY, out int val))
                 return (UdonSharpBehaviourVersion)val;
-            
+
             return UdonSharpBehaviourVersion.V0;
         }
 
@@ -156,8 +158,9 @@ namespace Anatawa12.UdonSharpMigrationFix
 
             if (lastVer == version && lastVer != UdonSharpBehaviourVersion.V0)
                 return;
-            
-            bool setVer = behaviour.publicVariables.TrySetVariableValue<int>(UDONSHARP_BEHAVIOUR_VERSION_KEY, (int)version);
+
+            bool setVer =
+                behaviour.publicVariables.TrySetVariableValue<int>(UDONSHARP_BEHAVIOUR_VERSION_KEY, (int)version);
 
             if (!setVer)
             {
@@ -171,7 +174,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                 UdonSharpUtils.SetDirty(behaviour);
                 return;
             }
-            
+
             UdonSharpUtils.LogError("Could not set version variable");
         }
 
@@ -183,11 +186,11 @@ namespace Anatawa12.UdonSharpMigrationFix
             if (!behaviour.publicVariables.TrySetVariableValue<bool>(UDONSHARP_BEHAVIOUR_UPGRADE_MARKER, true))
             {
                 behaviour.publicVariables.RemoveVariable(UDONSHARP_BEHAVIOUR_UPGRADE_MARKER);
-                
+
                 IUdonVariable newVar = new UdonVariable<bool>(UDONSHARP_BEHAVIOUR_UPGRADE_MARKER, true);
                 behaviour.publicVariables.TryAddVariable(newVar);
             }
-            
+
             UdonSharpUtils.SetDirty(behaviour);
         }
 
@@ -202,7 +205,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         internal static bool IsAnyProgramAssetOutOfDate()
         {
             UdonSharpProgramAsset[] programs = UdonSharpProgramAsset.GetAllUdonSharpPrograms();
-            
+
             bool isOutOfDate = false;
             foreach (UdonSharpProgramAsset programAsset in programs)
             {
@@ -227,93 +230,102 @@ namespace Anatawa12.UdonSharpMigrationFix
             {
                 UdonSharpCompilerV1.CompileSync();
             }
-            
-            List<GameObject> prefabRoots = new List<GameObject>();
 
             // Skip upgrades on any intermediate prefab assets which may be considered invalid during the build process, mostly to avoid spamming people's console with logs that may be confusing but also gives slightly faster builds.
             string intermediatePrefabPath = UdonSharpLocator.IntermediatePrefabPath.Replace("\\", "/");
-            
-            foreach (GameObject prefabRoot in prefabRootEnumerable)
-            {
-                string prefabPath = AssetDatabase.GetAssetPath(prefabRoot);
-                if (prefabPath.StartsWith(intermediatePrefabPath))
-                {
-                    continue;
-                }
-                
-                prefabRoots.Add(prefabRoot);
-            }
 
-            bool NeedsNewProxy(UdonBehaviour udonBehaviour)
-            {
-                if (!IsUdonSharpBehaviour(udonBehaviour))
-                    return false;
+            var prefabRoots = Enumerable.ToList(
+                from prefabRoot in prefabRootEnumerable
+                let prefabPath = AssetDatabase.GetAssetPath(prefabRoot)
+                where !prefabPath.StartsWith(intermediatePrefabPath, StringComparison.Ordinal)
+                select prefabRoot);
 
-                if (GetProxyBehaviour(udonBehaviour))
-                    return false;
-                
-                return true;
-            }
+            // Now we have a set of prefabs that we can actually load and run the two upgrade phases on.
+            // Todo: look at merging the two passes since we don't actually need to load prefabs into scenes apparently
 
-            bool NeedsSerializationUpgrade(UdonBehaviour udonBehaviour)
-            {
-                if (!IsUdonSharpBehaviour(udonBehaviour))
-                    return false;
-                
-                if (NeedsNewProxy(udonBehaviour))
-                    return true;
+            var phase1FixupPrefabRoots = FindPrefabsToUpgradePhase1(prefabRoots);
+            var phase2FixupPrefabRoots = FindPrefabsToUpgradePhase2(prefabRoots);
 
-                if (GetBehaviourVersion(udonBehaviour) == UdonSharpBehaviourVersion.V0DataUpgradeNeeded)
-                    return true;
-                
+            // Early out and avoid the edit scope
+            if (phase1FixupPrefabRoots.Count == 0 && phase2FixupPrefabRoots.Count == 0)
+                return;
+
+            foreach (var phase2FixupPrefabRoot in phase2FixupPrefabRoots)
+                phase1FixupPrefabRoots.Add(phase2FixupPrefabRoot);
+
+            var prefabDag = new UdonSharpPrefabDAG(prefabRoots);
+
+            MarkPrefabsMarkToBeUpgraded(prefabDag);
+
+            if (phase2FixupPrefabRoots.Count > 0)
+                UdonSharpUtils.Log(
+                    $"Running upgrade process on {phase2FixupPrefabRoots.Count} prefabs: {string.Join(", ", phase2FixupPrefabRoots.Select(Path.GetFileName))}");
+
+            UpgradePrefabsPhase1(phase1FixupPrefabRoots, prefabDag);
+            UpgradePrefabsPhase2(phase2FixupPrefabRoots, prefabDag);
+
+            UdonSharpUtils.Log("Prefab upgrade pass finished");
+        }
+
+        private static bool NeedsNewProxy(UdonBehaviour udonBehaviour) =>
+            IsUdonSharpBehaviour(udonBehaviour) && GetProxyBehaviour(udonBehaviour) == null;
+
+        private static bool NeedsSerializationUpgrade(UdonBehaviour udonBehaviour)
+        {
+            if (!IsUdonSharpBehaviour(udonBehaviour))
                 return false;
-            }
 
-            HashSet<string> phase1FixupPrefabRoots = new HashSet<string>();
+            if (NeedsNewProxy(udonBehaviour))
+                return true;
+
+            if (GetBehaviourVersion(udonBehaviour) == UdonSharpBehaviourVersion.V0DataUpgradeNeeded)
+                return true;
+
+            return false;
+        }
+
+        private static HashSet<string> FindPrefabsToUpgradePhase1(IEnumerable<GameObject> prefabRoots)
+        {
+
+            var phase1FixupPrefabRoots = new HashSet<string>();
 
             // Phase 1 Pruning - Add missing proxy behaviours
             foreach (GameObject prefabRoot in prefabRoots)
             {
-                if (!prefabRoot.GetComponentsInChildren<UdonBehaviour>(true).Any(NeedsNewProxy)) 
+                if (!prefabRoot.GetComponentsInChildren<UdonBehaviour>(true).Any(NeedsNewProxy))
                     continue;
-                
+
                 string prefabPath = AssetDatabase.GetAssetPath(prefabRoot);
 
                 if (!prefabPath.IsNullOrWhitespace())
                     phase1FixupPrefabRoots.Add(prefabPath);
             }
 
-            HashSet<string> phase2FixupPrefabRoots = new HashSet<string>(phase1FixupPrefabRoots);
+            return phase1FixupPrefabRoots;
+        }
+
+        private static HashSet<string> FindPrefabsToUpgradePhase2(IEnumerable<GameObject> prefabRoots)
+        {
+            HashSet<string> phase2FixupPrefabRoots = new HashSet<string>();
 
             // Phase 2 Pruning - Check for behaviours that require their data ownership to be transferred Udon -> C#
-            foreach (GameObject prefabRoot in prefabRoots)
+            foreach (var prefabRoot in prefabRoots.Where(prefabRoot =>
+                         prefabRoot.GetComponentsInChildren<UdonBehaviour>(true).Any(NeedsSerializationUpgrade)))
             {
-                foreach (UdonBehaviour udonBehaviour in prefabRoot.GetComponentsInChildren<UdonBehaviour>(true))
-                {
-                    if (NeedsSerializationUpgrade(udonBehaviour))
-                    {
-                        string prefabPath = AssetDatabase.GetAssetPath(prefabRoot);
+                string prefabPath = AssetDatabase.GetAssetPath(prefabRoot);
 
-                        if (!prefabPath.IsNullOrWhitespace())
-                            phase2FixupPrefabRoots.Add(prefabPath);
-
-                        break;
-                    }
-                }
+                if (!prefabPath.IsNullOrWhitespace())
+                    phase2FixupPrefabRoots.Add(prefabPath);
             }
-            
-            // Now we have a set of prefabs that we can actually load and run the two upgrade phases on.
-            // Todo: look at merging the two passes since we don't actually need to load prefabs into scenes apparently
 
-            // Early out and avoid the edit scope
-            if (phase1FixupPrefabRoots.Count == 0 && phase2FixupPrefabRoots.Count == 0)
-                return;
-            
-            UdonSharpPrefabDAG prefabDag = new UdonSharpPrefabDAG(prefabRoots);
+            return phase2FixupPrefabRoots;
+        }
 
+        private static void MarkPrefabsMarkToBeUpgraded(UdonSharpPrefabDAG prefabDag)
+        {
             // Walk up from children -> parents and mark prefab deltas on all U# behaviours to be upgraded
             // Prevents versioning from being overwritten when a parent prefab is upgraded
-            foreach (string prefabPath in prefabDag.Reverse())
+            foreach (var prefabPath in prefabDag.Reverse())
             {
                 GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
 
@@ -322,15 +334,16 @@ namespace Anatawa12.UdonSharpMigrationFix
                 try
                 {
                     HashSet<UdonBehaviour> behavioursToPrepare = new HashSet<UdonBehaviour>();
-                    
+
                     foreach (UdonBehaviour behaviour in prefabRoot.GetComponentsInChildren<UdonBehaviour>(true))
                     {
-                        if (PrefabUtility.GetCorrespondingObjectFromSource(behaviour) != behaviour && (NeedsNewProxy(behaviour) || NeedsSerializationUpgrade(behaviour)))
+                        if (PrefabUtility.GetCorrespondingObjectFromSource(behaviour) != behaviour &&
+                            (NeedsNewProxy(behaviour) || NeedsSerializationUpgrade(behaviour)))
                         {
                             behavioursToPrepare.Add(behaviour);
                         }
                     }
-                    
+
                     // Deltas are stored per-prefab-instance-root in a given prefab, don't question it. Thanks.
                     // We take care to not accidentally hit any non-U#-behaviour deltas here
                     // These APIs are not documented properly at all and the only mentions of them on forum posts are how they don't work with no solutions posted :))))
@@ -344,26 +357,28 @@ namespace Anatawa12.UdonSharpMigrationFix
 
                             rootGameObjects.Add(rootPrefab ? rootPrefab : behaviourToPrepare.gameObject);
                         }
-                        
-                        HashSet<Object> originalObjects = new HashSet<Object>(behavioursToPrepare.Select(PrefabUtility.GetCorrespondingObjectFromOriginalSource));
 
-                        foreach (UdonBehaviour behaviour in behavioursToPrepare)
+                        var originalObjects = new HashSet<Object>(
+                            behavioursToPrepare.Select(PrefabUtility.GetCorrespondingObjectFromOriginalSource));
+
+                        foreach (var behaviour in behavioursToPrepare)
                         {
-                            UdonBehaviour currentBehaviour = behaviour;
-                        
+                            var currentBehaviour = behaviour;
+
                             while (currentBehaviour)
                             {
                                 originalObjects.Add(currentBehaviour);
-                                
-                                UdonBehaviour newBehaviour = PrefabUtility.GetCorrespondingObjectFromSource(currentBehaviour);
-                        
+
+                                var newBehaviour = PrefabUtility.GetCorrespondingObjectFromSource(currentBehaviour);
+
                                 currentBehaviour = newBehaviour != currentBehaviour ? newBehaviour : null;
                             }
                         }
 
-                        foreach (GameObject rootGameObject in rootGameObjects)
+                        foreach (var rootGameObject in rootGameObjects)
                         {
-                            List<PropertyModification> propertyModifications = PrefabUtility.GetPropertyModifications(rootGameObject)?.ToList();
+                            var propertyModifications =
+                                PrefabUtility.GetPropertyModifications(rootGameObject)?.ToList();
 
                             if (propertyModifications != null)
                             {
@@ -374,14 +389,15 @@ namespace Anatawa12.UdonSharpMigrationFix
                                         {
                                             return true;
                                         }
-                                        
+
                                         if (!originalObjects.Contains(modification.target))
                                         {
                                             return true;
                                         }
-                                    
+
                                         if (modification.propertyPath == "serializedPublicVariablesBytesString" ||
-                                            modification.propertyPath.StartsWith("publicVariablesUnityEngineObjects", StringComparison.Ordinal))
+                                            modification.propertyPath.StartsWith("publicVariablesUnityEngineObjects",
+                                                StringComparison.Ordinal))
                                         {
                                             // UdonSharpUtils.Log($"Removed property override for {modification.propertyPath} on {modification.target}");
                                             return false;
@@ -389,7 +405,7 @@ namespace Anatawa12.UdonSharpMigrationFix
 
                                         return true;
                                     }).ToList();
-                                
+
                                 // UdonSharpUtils.Log($"Modifications found on {rootGameObject}");
                             }
                             else
@@ -397,27 +413,30 @@ namespace Anatawa12.UdonSharpMigrationFix
                                 propertyModifications = new List<PropertyModification>();
                             }
 
-                            foreach (UdonBehaviour behaviour in rootGameObject.GetComponentsInChildren<UdonBehaviour>(true))
+                            foreach (UdonBehaviour behaviour in rootGameObject.GetComponentsInChildren<UdonBehaviour>(
+                                         true))
                             {
                                 if (!behavioursToPrepare.Contains(behaviour))
                                 {
                                     continue;
                                 }
 
-                                UdonBehaviour originalBehaviour = PrefabUtility.GetCorrespondingObjectFromSource(behaviour);
-                                
+                                UdonBehaviour originalBehaviour =
+                                    PrefabUtility.GetCorrespondingObjectFromSource(behaviour);
+
                                 propertyModifications.Add(new PropertyModification()
                                 {
-                                    target = originalBehaviour, 
+                                    target = originalBehaviour,
                                     propertyPath = "serializedPublicVariablesBytesString",
                                     value = (string)_publicVariablesBytesStrField.GetValue(behaviour)
                                 });
 
-                                List<Object> objectRefs = (List<Object>)_publicVariablesObjectReferences.GetValue(behaviour);
+                                List<Object> objectRefs =
+                                    (List<Object>)_publicVariablesObjectReferences.GetValue(behaviour);
 
                                 propertyModifications.Add(new PropertyModification()
                                 {
-                                    target = originalBehaviour, 
+                                    target = originalBehaviour,
                                     propertyPath = "publicVariablesUnityEngineObjects.Array.size",
                                     value = objectRefs.Count.ToString()
                                 });
@@ -428,7 +447,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                                     {
                                         target = originalBehaviour,
                                         propertyPath = $"publicVariablesUnityEngineObjects.Array.data[{i}]",
-                                        objectReference = objectRefs[i], 
+                                        objectReference = objectRefs[i],
                                         value = ""
                                     });
                                 }
@@ -439,10 +458,10 @@ namespace Anatawa12.UdonSharpMigrationFix
 
                             needsSave = true;
                         }
-                        
+
                         // UdonSharpUtils.Log($"Marking delta on prefab {prefabRoot} because it is not the original definition.");
                     }
-                    
+
                     if (needsSave)
                     {
                         PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
@@ -453,11 +472,11 @@ namespace Anatawa12.UdonSharpMigrationFix
                     PrefabUtility.UnloadPrefabContents(prefabRoot);
                 }
             }
-            
-            if (phase2FixupPrefabRoots.Count > 0)
-                UdonSharpUtils.Log($"Running upgrade process on {phase2FixupPrefabRoots.Count} prefabs: {string.Join(", ", phase2FixupPrefabRoots.Select(Path.GetFileName))}");
-            
-            foreach (string prefabRootPath in prefabDag)
+        }
+
+        private static void UpgradePrefabsPhase1(HashSet<string> phase1FixupPrefabRoots, UdonSharpPrefabDAG prefabDag)
+        {
+            foreach (var prefabRootPath in prefabDag)
             {
                 if (!phase1FixupPrefabRoots.Contains(prefabRootPath))
                 {
@@ -469,7 +488,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                 try
                 {
                     bool needsSave = false;
-                    
+
                     foreach (UdonBehaviour udonBehaviour in prefabRoot.GetComponentsInChildren<UdonBehaviour>(true))
                     {
                         if (!NeedsNewProxy(udonBehaviour))
@@ -479,11 +498,12 @@ namespace Anatawa12.UdonSharpMigrationFix
                                 SetBehaviourVersion(udonBehaviour, UdonSharpBehaviourVersion.V0DataUpgradeNeeded);
                                 needsSave = true;
                             }
-                            
+
                             continue;
                         }
 
-                        UdonSharpBehaviour newProxy = (UdonSharpBehaviour)udonBehaviour.gameObject.AddComponent(GetUdonSharpBehaviourType(udonBehaviour));
+                        var newProxy = (UdonSharpBehaviour)udonBehaviour.gameObject.AddComponent(
+                            GetUdonSharpBehaviourType(udonBehaviour));
                         newProxy.enabled = udonBehaviour.enabled;
 
                         SetBackingUdonBehaviour(newProxy, udonBehaviour);
@@ -507,13 +527,18 @@ namespace Anatawa12.UdonSharpMigrationFix
                 }
                 catch (Exception e)
                 {
-                    UdonSharpUtils.LogError($"Encountered exception while upgrading prefab {prefabRootPath}, report exception to Merlin: {e}");
+                    UdonSharpUtils.LogError(
+                        $"Encountered exception while upgrading prefab {prefabRootPath}, report exception to Merlin: {e}");
                 }
                 finally
                 {
                     PrefabUtility.UnloadPrefabContents(prefabRoot);
                 }
             }
+        }
+
+        private static void UpgradePrefabsPhase2(HashSet<string> phase2FixupPrefabRoots, UdonSharpPrefabDAG prefabDag)
+        {
 
             foreach (string prefabRootPath in prefabDag)
             {
@@ -555,20 +580,22 @@ namespace Anatawa12.UdonSharpMigrationFix
                 }
                 catch (Exception e)
                 {
-                    UdonSharpUtils.LogError($"Encountered exception while upgrading prefab {prefabRootPath}, report exception to Merlin: {e}");
+                    UdonSharpUtils.LogError(
+                        $"Encountered exception while upgrading prefab {prefabRootPath}, report exception to Merlin: {e}");
                 }
                 finally
                 {
                     PrefabUtility.UnloadPrefabContents(prefabRoot);
                 }
             }
-            
-            UdonSharpUtils.Log("Prefab upgrade pass finished");
         }
 
-        private static readonly MethodInfo _moveComponentRelativeToComponent = typeof(UnityEditorInternal.ComponentUtility).GetMethods(BindingFlags.NonPublic | BindingFlags.Static).First(e => e.Name == "MoveComponentRelativeToComponent" && e.GetParameters().Length == 3);
+        private static readonly MethodInfo _moveComponentRelativeToComponent =
+            typeof(UnityEditorInternal.ComponentUtility).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                .First(e => e.Name == "MoveComponentRelativeToComponent" && e.GetParameters().Length == 3);
 
-        internal static void MoveComponentRelativeToComponent(Component component, Component targetComponent, bool aboveTarget)
+        internal static void MoveComponentRelativeToComponent(Component component, Component targetComponent,
+            bool aboveTarget)
         {
             _moveComponentRelativeToComponent.Invoke(null, new object[] { component, targetComponent, aboveTarget });
         }
@@ -583,7 +610,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         {
             if (behaviour == null)
                 return false;
-            
+
             return GetBackingUdonBehaviour(behaviour) != null;
         }
 
@@ -605,7 +632,7 @@ namespace Anatawa12.UdonSharpMigrationFix
             }
 
             UdonSharpBehaviour[] behaviours = udonBehaviour.GetComponents<UdonSharpBehaviour>();
-            
+
             foreach (UdonSharpBehaviour udonSharpBehaviour in behaviours)
             {
                 UdonBehaviour backingBehaviour = GetBackingUdonBehaviour(udonSharpBehaviour);
@@ -667,7 +694,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                 throw new ArgumentNullException(nameof(udonBehaviour));
 
             UdonSharpBehaviour proxyBehaviour = FindProxyBehaviour_Internal(udonBehaviour);
-            
+
             return proxyBehaviour;
         }
     }
