@@ -75,7 +75,7 @@ Packages/*
 
 # UdonSharp stuff
 # Except UdonSharp folder from Packages/* rule
-!Packages/com.vrchat.UdonSharp/
+!Packages/com.anatawa12.udon-sharp-migration-fix/
 /Assets/UdonSharp/UdonSharpSettings.asset
 /Assets/UdonSharp/UdonSharpSettings.asset.meta
 Assets/Merlin.meta
