@@ -8,6 +8,7 @@ using System.Reflection;
 using UdonSharp;
 using UdonSharp.Compiler;
 using UdonSharp.Updater;
+using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 using VRC.Udon;
@@ -16,7 +17,7 @@ using VRC.Udon.Common.Interfaces;
 using VRC.Udon.Serialization.OdinSerializer.Utilities;
 using Object = UnityEngine.Object;
 
-namespace UdonSharpEditor
+namespace Anatawa12.UdonSharpMigrationFix
 {
     /// <summary>
     /// Stored on the backing UdonBehaviour

@@ -6,7 +6,7 @@ using UdonSharp;
 using UnityEditor;
 using UnityEngine;
 
-namespace UdonSharpEditor
+namespace Anatawa12.UdonSharpMigrationFix
 {
     /// <summary>
     /// Contains a set of Directed Acyclic Graphs that may or may not be connected at any point. The set of DAGs is rooted on prefabs that contain no nested prefabs and are not variants.

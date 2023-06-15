@@ -5,7 +5,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-namespace UdonSharp
+namespace Anatawa12.UdonSharpMigrationFix
 {
     internal static class UdonSharpUtils
     {

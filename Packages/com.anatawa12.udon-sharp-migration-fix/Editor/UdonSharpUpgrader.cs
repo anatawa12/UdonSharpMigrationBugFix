@@ -9,7 +9,7 @@ using VRC.SDKBase;
 using VRC.Udon.Serialization.OdinSerializer;
 using VRC.Udon.Serialization.OdinSerializer.Utilities;
 
-namespace UdonSharpEditor
+namespace Anatawa12.UdonSharpMigrationFix
 {
     internal class UdonSharpUpgrader
     {

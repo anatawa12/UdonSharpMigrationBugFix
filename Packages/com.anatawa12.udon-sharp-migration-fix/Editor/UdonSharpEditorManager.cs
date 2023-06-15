@@ -12,7 +12,7 @@ using VRC.Udon;
 using Sirenix.OdinInspector.Editor;
 #endif
 
-namespace UdonSharpEditor
+namespace Anatawa12.UdonSharpMigrationFix
 {
     [InitializeOnLoad]
     internal class UdonSharpEditorManager

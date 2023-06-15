@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using VRC.Udon.Serialization.OdinSerializer;
 
-namespace UdonSharp
+namespace Anatawa12.UdonSharpMigrationFix
 {
     /// <summary>
     /// Handles cache data for U# that gets saved to the Library. All data this uses is intermediate generated data that is not required and can be regenerated from the source files.
