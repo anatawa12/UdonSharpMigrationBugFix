@@ -8,6 +8,7 @@ on:
 
 env:
   PKG_NAME: com.anatawa12.udon-sharp-migration-fix
+  RELEASER_CHANGER: npm
 
 concurrency:
   group: publish
