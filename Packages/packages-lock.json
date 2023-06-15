@@ -1,5 +1,11 @@
 {
   "dependencies": {
+    "com.anatawa12.harmonyfix": {
+      "version": "file:com.anatawa12.harmonyfix",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.anatawa12.udon-sharp-migration-fix": {
       "version": "file:com.anatawa12.udon-sharp-migration-fix",
       "depth": 0,
