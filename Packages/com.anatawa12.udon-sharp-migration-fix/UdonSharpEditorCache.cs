@@ -64,20 +64,6 @@ namespace Anatawa12.UdonSharpMigrationFix
 
                 return paths;
             }
-
-            public static AssetDeleteResult OnWillDeleteAsset(string assetPath, RemoveAssetOptions options)
-            {
-                MonoScript script = AssetDatabase.LoadAssetAtPath<MonoScript>(assetPath);
-
-                if (script)
-                {
-                }
-                else if (AssetDatabase.IsValidFolder(assetPath))
-                {
-                }
-
-                return AssetDeleteResult.DidNotDelete;
-            }
         }
 
         private static void AssemblyReloadSave()
