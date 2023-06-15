@@ -21,15 +21,13 @@ namespace Anatawa12.UdonSharpMigrationFix
         }
 
         private const string CACHE_DIR_PATH = "Library/UdonSharpCache/";
-        private const string CACHE_FILE_PATH = "Library/UdonSharpCache/UdonSharpEditorCache.dat"; // Old cache ended in .asset
+        private const string CACHE_FILE_PATH = "Library/UdonSharpCache/UdonSharpMigrationFixEditorCache.dat"; // Old cache ended in .asset
 
         public static UdonSharpEditorCache Instance => GetInstance();
 
         private static UdonSharpEditorCache _instance;
         private static readonly object InstanceLock = new object();
 
-        private const int CURR_CACHE_VER = 2;
-        
         private static UdonSharpEditorCache GetInstance()
         {
             lock (InstanceLock)
@@ -38,7 +36,6 @@ namespace Anatawa12.UdonSharpMigrationFix
                     return _instance;
 
                 _instance = new UdonSharpEditorCache();
-                _instance._info.version = CURR_CACHE_VER;
                 _instance._info.projectNeedsUpgrade = true;
 
                 if (!File.Exists(CACHE_FILE_PATH))
@@ -46,14 +43,6 @@ namespace Anatawa12.UdonSharpMigrationFix
                 
                 UdonSharpCacheStorage storage = SerializationUtility.DeserializeValue<UdonSharpCacheStorage>(File.ReadAllBytes(CACHE_FILE_PATH), DataFormat.Binary);
                 _instance._info = storage.info;
-
-                // For now we just use this to see if we need to check for project serialization upgrade, may be extended later on. At the moment only used to avoid wasting time on extra validation when possible.
-                // Hey now we use this to nuke out old data too
-                if (_instance._info.version < CURR_CACHE_VER)
-                {
-                    _instance._info.version = CURR_CACHE_VER;
-                    _instance._info.projectNeedsUpgrade = true;
-                }
 
                 return _instance;
             }
@@ -116,9 +105,6 @@ namespace Anatawa12.UdonSharpMigrationFix
         [Serializable]
         public struct ProjectInfo
         {
-            [SerializeField]
-            internal int version;
-            
             public bool projectNeedsUpgrade;
         }
 
