@@ -250,8 +250,7 @@ namespace Anatawa12.UdonSharpMigrationFix
             if (phase1FixupPrefabRoots.Count == 0 && phase2FixupPrefabRoots.Count == 0)
                 return;
 
-            foreach (var phase2FixupPrefabRoot in phase2FixupPrefabRoots)
-                phase1FixupPrefabRoots.Add(phase2FixupPrefabRoot);
+            phase2FixupPrefabRoots.UnionWith(phase1FixupPrefabRoots);
 
             var prefabDag = new UdonSharpPrefabDAG(prefabRoots);
 
