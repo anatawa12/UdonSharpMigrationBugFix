@@ -70,6 +70,8 @@ Assets/UdonSharp/Scripts/Editor.meta
 Assets/Udon.meta
 [Aa]ssets/SerializedUdonPrograms*
 Packages/*
+!Packages/packages-lock.json
+!Packages/vpm-manifest.json
 
 # UdonSharp stuff
 # Except UdonSharp folder from Packages/* rule
