@@ -23,7 +23,7 @@ namespace Anatawa12.UdonSharpMigrationFix
             {
                 oldValue = EditorApplication.update;
                 newValue = onEditorUpdate[0] + oldValue;
-            } while (Interlocked.CompareExchange(ref EditorApplication.update, newValue, oldValue) != newValue);
+            } while (Interlocked.CompareExchange(ref EditorApplication.update, newValue, oldValue) != oldValue);
         }
 
         private static void OnEditorUpdate()
