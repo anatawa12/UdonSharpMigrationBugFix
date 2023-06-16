@@ -17,7 +17,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         [MenuItem("VRChat SDK/Udon Sharp/Force Prefab Upgrade with Anatawa12's Fixture")]
         internal static void ForceUpgrade()
         {
-            UdonSharpEditorCache.Instance.QueueUpgradePass();
+            UdonSharpEditorCache.QueueUpgradePass();
         }
 
         internal static bool NeedsUpgradeScripts()

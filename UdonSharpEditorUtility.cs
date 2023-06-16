@@ -228,6 +228,7 @@ namespace Anatawa12.UdonSharpMigrationFix
         {
             if (UdonSharpProgramAsset.IsAnyProgramAssetSourceDirty() || IsAnyProgramAssetOutOfDate())
             {
+                UdonSharpUtils.Log("We found some program asset is out of date or dirty");
                 UdonSharpCompilerV1.CompileSync();
             }
 

@@ -39,7 +39,7 @@ namespace Anatawa12.UdonSharpMigrationFix
 
         private static void UpgradeAssetsIfNeeded()
         {
-            if (UdonSharpEditorCache.Instance.Info.projectNeedsUpgrade && 
+            if (UdonSharpEditorCache.ProjectNeedsUpgrade && 
                 !EditorApplication.isCompiling && !EditorApplication.isUpdating && !_upgradeDeferredByScriptError)
             {
                 if (UdonSharpUpgrader.NeedsUpgradeScripts())
@@ -82,7 +82,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                 }
                 finally
                 {
-                    UdonSharpEditorCache.Instance.ClearUpgradePassQueue();
+                    UdonSharpEditorCache.ClearUpgradePassQueue();
                 }
             }
         }
@@ -147,7 +147,7 @@ namespace Anatawa12.UdonSharpMigrationFix
                     continue;
                 }
 
-                UdonSharpEditorCache.Instance.QueueUpgradePass();
+                UdonSharpEditorCache.QueueUpgradePass();
                 break;
             }
         }
