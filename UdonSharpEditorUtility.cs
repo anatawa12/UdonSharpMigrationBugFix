@@ -508,7 +508,10 @@ namespace Anatawa12.UdonSharpMigrationFix
 
                         SetBackingUdonBehaviour(newProxy, udonBehaviour);
 
-                        MoveComponentRelativeToComponent(newProxy, udonBehaviour, true);
+                        // if the GameObject is a prefab instance, we cannot relocate components
+                        // so skip MoveComponentRelativeToComponent
+                        if (!PrefabUtility.GetCorrespondingObjectFromSource(udonBehaviour.gameObject))
+                            MoveComponentRelativeToComponent(newProxy, udonBehaviour, true);
 
                         SetBehaviourVersion(udonBehaviour, UdonSharpBehaviourVersion.V0DataUpgradeNeeded);
 
